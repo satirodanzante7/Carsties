@@ -16,7 +16,6 @@ services:
       - 27017:27017
     volumes:
       - /var/lib/mongodb/data
-
 volumes:
   pgdata:
   mongodata:

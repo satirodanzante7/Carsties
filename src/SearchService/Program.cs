@@ -1,15 +1,17 @@
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Attributes;
-using MongoDB.Driver; 
+using System.Net;
+using MongoDB.Driver;
+using MongoDB.Entities;
+using Polly;
+using Polly.Extensions.Http;
+using SearchService;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-
 builder.Services.AddControllers();
 
-var app = builder.Build();
+builder.Services.AddHttpClient<AuctionSvcHttpClient>().AddPolicyHandler(GetPolicy());
 
+var app = builder.Build();
 
 app.UseHttpsRedirection();
 
@@ -17,14 +19,26 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-var client = new MongoClient(app.Configuration.GetConnectionString("MongoDbConnection"));
-var database = client.GetDatabase("SearchDb");
-var collection = database.GetCollection<Item>("items"); // Replace 'items' with your collection name
+app.Lifetime.ApplicationStarted.Register(async () => 
+{
+    try
+{
+    await DbInitializer.InitDb(app);
+}
+catch (Exception e)
+{
+    Console.WriteLine($"Error initializing database: {e}");
+}
+});
 
-await collection.Indexes.CreateOneAsync(new CreateIndexModel<Item>(
-    Builders<Item>.IndexKeys
-        .Text(x => x.Make)
-        .Text(x => x.Model)
-        .Text(x => x.Color)));
+
+
+
 
 app.Run();
+
+static IAsyncPolicy<HttpResponseMessage> GetPolicy()
+    => HttpPolicyExtensions
+        .HandleTransientHttpError()
+        .OrResult(msg => msg.StatusCode == HttpStatusCode.NotFound)
+        .WaitAndRetryForeverAsync(_ => TimeSpan.FromSeconds(3));
